@@ -23,11 +23,12 @@ Bahriye Basturk Akay (bahriye@erciyes.edu.tr)
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <conio.h>
+// #include <conio.h> Only works on windows
+#include <ncurses.h> // Alternative to conio.h for Unix Systems
 #include <time.h>
 
 /* Control Parameters of ABC algorithm*/
-#define NP 40             /* The number of colony size (employed bees+onlooker bees)*/
+#define NP 80             /* The number of colony size (employed bees+onlooker bees)*/ // Default = 40
 #define FoodNumber NP / 2 /*The number of food sources equals the half of the colony size*/
 #define limit 100         /*A food source which could not be improved through "limit" trials is abandoned by its employed bee*/
 #define maxCycle 3000     /*The number of cycles for foraging {a stopping criteria}*/
@@ -288,10 +289,19 @@ void SendScoutBees()
 /*Main program of the ABC algorithm*/
 int main()
 {
+
+    printf("Running ABC serially on CPU with Colony size of %d\n", NP);
+    
     int iter, run, j;
     double mean;
     mean = 0;
     srand(time(NULL));
+
+    struct timespec start, stop; 
+	double t;
+
+    // measure the start time here
+	if( clock_gettime(CLOCK_REALTIME, &start) == -1) { perror("clock gettime");}
 
     for (run = 0; run < runtime; run++)
     {
@@ -306,16 +316,28 @@ int main()
             MemorizeBestSource();
             SendScoutBees();
         }
-        for (j = 0; j < D; j++)
-        {
-            printf("GlobalParam[%d]: %f\n", j + 1, GlobalParams[j]);
-        }
+        // for (j = 0; j < D; j++)
+        // {
+        //     printf("GlobalParam[%d]: %f\n", j + 1, GlobalParams[j]);
+        // }
         printf("%d. run: %e \n", run + 1, GlobalMin);
         GlobalMins[run] = GlobalMin;
         mean = mean + GlobalMin;
     }
     mean = mean / runtime;
     printf("Means of %d runs: %e\n", runtime, mean);
+
+    // measure the end time here
+    if( clock_gettime( CLOCK_REALTIME, &stop) == -1 ) { perror("clock gettime");}		
+    t = (stop.tv_sec - start.tv_sec)+ (double)(stop.tv_nsec - start.tv_nsec)/1e9;
+
+    printf("Time taken to run %d iterations: %f sec\n", runtime, t);
+
+    t /= runtime;
+    
+    // print out the execution time here
+    printf("Average Time taken to run each iterations: %f sec\n", t);
+
     getch();
 }
 
