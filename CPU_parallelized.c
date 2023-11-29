@@ -4,8 +4,11 @@
 #include <time.h>
 #include <pthread.h>
 
+#include "barrier.h" // Remove if not running on Mac
+
 /* Control Parameters of PABC */
-#define P 2 // Number of Processors
+#define P 4                 // Number of Processors
+#define MigrationGap 500    // Number of cycles between transfering solutions between colonies
 
 
 /* Control Parameters of ABC algorithm*/
@@ -66,6 +69,8 @@ typedef struct {
     unsigned int seed; // Seed for rand_r
 } thread_data;
 
+pthread_barrier_t syncBarrier;   // Barrier for synchronization
+
 /*Fitness function*/
 double CalculateFitness(double fun)
 {
@@ -106,12 +111,14 @@ void MemorizeBestSource(thread_data* thread_data)
 
     for (i = thread_data->startIdx; i < thread_data->endIdx; i++)
     {
+        // pthread_mutex_lock(&globalBestMutex);
         if (f[i] < GlobalMin[thread_data->threadIdx])
         {
             GlobalMin[thread_data->threadIdx] = f[i];
             for (j = 0; j < D; j++)
                 GlobalParams[thread_data->threadIdx][j] = Foods[i][j];
         }
+        // pthread_mutex_unlock(&globalBestMutex);
     }
 }
 
@@ -312,6 +319,40 @@ void SendScoutBees(thread_data* thread_data)
     }
 }
 
+// Function to replace the worst solution of current swarm i with best solution of swarm i + 1
+void replaceWorstWithGlobalBest(thread_data* thread_data) {
+
+    int i, j;
+
+    int worstIdx = thread_data->startIdx;
+    double worst = f[worstIdx];
+    double worstParam[D];
+    
+    for (i = thread_data->startIdx + 1; i < thread_data->endIdx; i++)
+    {
+        if (f[i] > worst)
+        {
+            worst = f[i];
+            worstIdx = i;
+            for (j = 0; j < D; j++)
+                worstParam[j] = Foods[i][j];
+        }
+    }
+
+    int bestIdx = (thread_data->threadIdx + 1) % P;
+
+    for (j = 0; j < D; j++)
+        Foods[worstIdx][j] = Foods[bestIdx][j];
+
+    f[worstIdx] = f[bestIdx];
+    fitness[worstIdx] = fitness[bestIdx];  
+    trial[worstIdx] = 0;
+    prob[worstIdx] = prob[bestIdx];
+    
+    // // Optionally, modify the solution slightly to maintain diversity
+    // modifySolution(Foods[worstIdx]);
+}
+
 /*Main program of the ABC algorithm*/
 void *ABC(void *data)
 {
@@ -324,6 +365,11 @@ void *ABC(void *data)
 
     for (iter = 0; iter < maxCycle; iter++)
     {
+        if (iter != 0 && (iter % MigrationGap == 0))
+        {
+            pthread_barrier_wait(&syncBarrier);
+            replaceWorstWithGlobalBest(ABC_data);
+        }
         SendEmployedBees(ABC_data);
         CalculateProbabilities(ABC_data);
         SendOnlookerBees(ABC_data);
@@ -365,7 +411,9 @@ int main()
         pthread_t threads[P];
         thread_data thread_data_array[P];
 
-        int i, rc;
+        pthread_barrier_init(&syncBarrier, NULL, P);
+
+        int i, j, rc;
         for (i = 0; i < P; i++)
         {
             thread_data_array[i].threadIdx = i;
@@ -407,16 +455,11 @@ int main()
             }
         }
 
-        // Output the best overall solution
+        // // Output the best overall solution
         // printf("Best solution found by swarm %d: %e\n", bestSwarmIndex + 1, overallBest);
-        // printf("Parameters of the best solution:\n");
+        // // printf("Parameters of the best solution:\n");
         // for (int j = 0; j < D; j++) {
         //     printf("Param[%d]: %f\n", j + 1, GlobalParams[bestSwarmIndex][j]);
-        // }
-
-        // for (j = 0; j < D; j++)
-        // {
-        //     printf("GlobalParam[%d]: %f\n", j + 1, GlobalParams[j]);
         // }
 
         printf("%d. run: %e \n", run + 1, overallBest);
@@ -437,6 +480,9 @@ int main()
     
     // print out the execution time here
     printf("Average Time taken to run each iterations: %f sec\n", t);
+
+
+    pthread_barrier_destroy(&syncBarrier);
 
     return 0;
 
