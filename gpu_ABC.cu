@@ -30,13 +30,13 @@ Bahriye Basturk Akay (bahriye@erciyes.edu.tr)
 #include <curand_kernel.h>
 
 /* Control Parameters of ABC algorithm*/
-#define NP 64             /* The number of colony size (employed bees+onlooker bees)*/ // Default = 40
+#define NP 2048             /* The number of colony size (employed bees+onlooker bees)*/ // Default = 40
 #define FoodNumber NP / 2 /*The number of food sources equals the half of the colony size*/
 #define limit 100         /*A food source which could not be improved through "limit" trials is abandoned by its employed bee*/
 #define maxCycle 3000     /*The number of cycles for foraging {a stopping criteria}*/
 
 /* Problem specific variables*/
-#define D 50     /*The number of parameters of the problem to be optimized*/
+#define D 2     /*The number of parameters of the problem to be optimized*/
 #define lb -5.12 /*lower bound of the parameters. */
 #define ub 5.12  /*upper bound of the parameters. lb and ub can be defined as arrays for the problems of which parameters have different bounds*/
 
@@ -57,7 +57,7 @@ double GlobalParams[D];      /*Parameters of the optimum solution*/
 double GlobalMins[runtime];  /*GlobalMins holds the GlobalMin of each run in multiple runs*/
 //double r;                    /*a random number in the range [0,1)*/
 
-
+double overall_min;
 double solution_array[FoodNumber*D];
 /*a function pointer returning double and taking a D-dimensional array as argument */
 /*If your function takes additional arguments then change function pointer definition and lines calling "...=function(solution);" in the code*/
@@ -70,8 +70,8 @@ __device__ __host__ double Griewank(double sol[D]);
 __device__ __host__ double Rastrigin(double sol[D]);
 
 /*Write your own objective function name instead of sphere*/
-__device__ FunctionCallback function = &Rastrigin;
- FunctionCallback function_host = &Rastrigin;
+__device__ FunctionCallback function = &sphere;
+ FunctionCallback function_host = &sphere;
  
 /*Fitness function*/
 __device__ __host__ double CalculateFitness(double fun)
@@ -141,7 +141,7 @@ __device__ void init_gpu(curandState *state,int* index, double* gpu_solution_arr
 {
     int j;
 	double randomValue;
-    for (j = 0; j < 50; j++)
+    for (j = 0; j < D; j++)
     {
         //r = ((double)rand() / ((double)(RAND_MAX) + (double)(1)));
 		randomValue = curand_uniform(&state[index[0]]);
@@ -438,12 +438,12 @@ int main()
 	
 	
 	dim3 dimGrid(2);
-	dim3 dimBlock(32);
+	dim3 dimBlock(512);
 	
 	
 	curandState *devStates;
     cudaMalloc((void **)&devStates, NP * sizeof(curandState));
-	int seed = 1234;
+	int seed = 123;
 	
 	
     // measure the start time here
@@ -455,6 +455,7 @@ int main()
         initial();
         MemorizeBestSource();
 		
+		overall_min = GlobalMin[0];
 		
 		cudaMemcpy(gpu_solution_array, solution_array, sizeof(int)*FoodNumber*D, cudaMemcpyHostToDevice);
 		cudaMemcpy(gpu_f, f, sizeof(int)*FoodNumber, cudaMemcpyHostToDevice);
@@ -467,7 +468,7 @@ int main()
 		cudaMemcpy(gpu_trial, trial, sizeof(int)*FoodNumber, cudaMemcpyHostToDevice);
 		find_optimized_solution<<<dimGrid, dimBlock>>>(devStates, seed, gpu_solution_array, gpu_f, gpu_fitness, gpu_GlobalMin, gpu_GlobalParams, gpu_maxtrial, gpu_maxtrialindex, gpu_prob, gpu_trial);
 		
-		cudaMemcpy(optimized_solution, gpu_GlobalMin, sizeof(int)*1, cudaMemcpyDeviceToHost);
+		cudaMemcpy(GlobalMin, gpu_GlobalMin, sizeof(int)*1, cudaMemcpyDeviceToHost);
 		
         //for (iter = 0; iter < maxCycle; iter++)
         //{
@@ -481,9 +482,14 @@ int main()
         // {
         //     printf("GlobalParam[%d]: %f\n", j + 1, GlobalParams[j]);
         // }
-        printf("%d. run: %e \n", run + 1, GlobalMin);
-        GlobalMins[run] = optimized_solution[0];
-        mean = mean + GlobalMin[0];
+		
+		
+		if (GlobalMin[0] < overall_min)
+			overall_min = GlobalMin[0];
+			
+        printf("%d. run: %e \n", run + 1, overall_min);
+        GlobalMins[run] = overall_min;
+        mean = mean + overall_min;
     }
     mean = mean / runtime;
     printf("Means of %d runs: %e\n", runtime, mean);
