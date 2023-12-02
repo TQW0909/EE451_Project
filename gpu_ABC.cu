@@ -29,6 +29,8 @@ Bahriye Basturk Akay (bahriye@erciyes.edu.tr)
 #include <time.h>
 #include <curand_kernel.h>
 
+#define BlockNum 4 // Number of thread blocks in the Grid, also = number of swarms
+
 /* Control Parameters of ABC algorithm*/
 #define NP 2048             /* The number of colony size (employed bees+onlooker bees)*/ // Default = 40
 #define FoodNumber NP / 2 /*The number of food sources equals the half of the colony size*/
@@ -52,8 +54,8 @@ double solution[D];          /*New solution (neighbour) produced by v_{ij}=x_{ij
 double ObjValSol;            /*Objective function value of new solution*/
 double FitnessSol;           /*Fitness value of new solution*/
 //int neighbour, param2change; /*param2change corrresponds to j, neighbour corresponds to k in equation v_{ij}=x_{ij}+\phi_{ij}*(x_{kj}-x_{ij})*/
-double GlobalMin[1];            /*Optimum solution obtained by ABC algorithm*/
-double GlobalParams[D];      /*Parameters of the optimum solution*/
+double GlobalMin[BlockNum];            /*Optimum solution obtained by ABC algorithm*/
+double GlobalParams[BlockNum][D];      /*Parameters of the optimum solution*/
 double GlobalMins[runtime];  /*GlobalMins holds the GlobalMin of each run in multiple runs*/
 //double r;                    /*a random number in the range [0,1)*/
 
@@ -105,16 +107,16 @@ void MemorizeBestSource()
 }
 
 
-__device__ void MemorizeBestSource_gpu(double* gpu_f, double* gpu_GlobalMin, double* gpu_GlobalParams, double* gpu_solution_array, int my_y)
+__device__ void MemorizeBestSource_gpu(double* gpu_f, double* gpu_GlobalMin, double* gpu_GlobalParams, double* gpu_solution_array, int my_y, int blockId)
 {
     int j;
 
     
-    if (gpu_f[my_y] < gpu_GlobalMin[0])
+    if (gpu_f[my_y] < gpu_GlobalMin[blockId])
     {
-        gpu_GlobalMin[0] = gpu_f[my_y];
+        gpu_GlobalMin[blockId] = gpu_f[my_y];
         for (j = 0; j < D; j++)
-            gpu_GlobalParams[j] = gpu_solution_array[my_y*D + j];
+            gpu_GlobalParams[blockId*D + j] = gpu_solution_array[my_y*D + j];
     }
 }
 /*Variables are initialized in the range [lb,ub]. If each parameter has different range, use arrays lb[j], ub[j] instead of lb and ub */
@@ -146,7 +148,7 @@ __device__ void init_gpu(curandState *state,int* index, double* gpu_solution_arr
         //r = ((double)rand() / ((double)(RAND_MAX) + (double)(1)));
 		randomValue = curand_uniform(&state[index[0]]);
         //Foods[index[0]][j] = r * (ub - lb) + lb;
-		gpu_solution_array [index[0]*D + j] = randomValue * (ub - lb) + lb;;
+		gpu_solution_array [index[0]*D + j] = randomValue * (ub - lb) + lb;
 		
         solution[j] = gpu_solution_array [index[0]*50 + j];
     }
@@ -186,7 +188,7 @@ __device__ void SendEmployedBees(curandState *state,double* gpu_solution_array, 
         /*A randomly chosen solution is used in producing a mutant solution of the solution i*/
         //r = ((double)rand() / ((double)(RAND_MAX) + (double)(1)));
 		randomValue = curand_uniform(&state[my_y]);
-        neighbour = (int)(randomValue * FoodNumber);
+        neighbour = blockSize * blockId + (int)(randomValue * FoodNumber); // Change to FoodNumber/number of swarms
 
         /*Randomly selected solution must be different from the solution i*/
         while (neighbour == my_y)
@@ -355,7 +357,8 @@ __device__ void SendScoutBees(curandState *state,int my_y, int* gpu_maxtrial,int
 __global__ void find_optimized_solution(curandState *state, int seed,double *gpu_solution_array, double *gpu_f, double *gpu_fitness, double* gpu_GlobalMin, double* gpu_GlobalParams,int* gpu_maxtrial, int* gpu_maxtrialindex, double*  gpu_prob, double* gpu_trial){
 	int my_y, iter;
 	//my_x = blockIdx.x*blockDim.x + threadIdx.x;
-	my_y = blockIdx.y*blockDim.y + threadIdx.y;
+    int blockId = blockIdx.x;
+	my_y = blockIdx.y*blockDim.y + threadIdx.y; // Change to x
 	
 	curand_init(seed, my_y, 0, &state[my_y]);
 	
@@ -372,7 +375,7 @@ __global__ void find_optimized_solution(curandState *state, int seed,double *gpu
             SendEmployedBees(state,gpu_solution_array, my_y,solution, ObjValSol, FitnessSol, gpu_fitness, gpu_trial, gpu_f, gpu_maxtrial, gpu_maxtrialindex);
             CalculateProbabilities(gpu_fitness, my_y,  gpu_prob,  maxfit);
             SendOnlookerBees(state, gpu_prob, gpu_solution_array, my_y, solution, ObjValSol,  FitnessSol,  gpu_fitness,  gpu_trial,  gpu_f,  gpu_maxtrial,  gpu_maxtrialindex);
-            MemorizeBestSource_gpu(gpu_f,  gpu_GlobalMin,  gpu_GlobalParams, gpu_solution_array,  my_y);
+            MemorizeBestSource_gpu(gpu_f,  gpu_GlobalMin,  gpu_GlobalParams, gpu_solution_array,  my_y, blockId);
             SendScoutBees(state, my_y, gpu_maxtrial, gpu_maxtrialindex, gpu_trial, gpu_solution_array, solution,  gpu_f,  gpu_fitness);
         }
 	 
@@ -429,15 +432,15 @@ int main()
 	cudaMalloc((void**)&gpu_maxtrial, sizeof(int)*1);
 	cudaMalloc((void**)&gpu_maxtrialindex, sizeof(int)*1);
 	
-	cudaMalloc((void**)&gpu_GlobalMin, sizeof(int)*1);
-	cudaMalloc((void**)&gpu_GlobalParams, sizeof(int)*D);
+	cudaMalloc((void**)&gpu_GlobalMin, sizeof(int)*BlockNum);
+	cudaMalloc((void**)&gpu_GlobalParams, sizeof(int)*D*BlockNum);
 	cudaMalloc((void**)&gpu_prob, sizeof(int)*D);
 	
 	cudaMalloc((void**)&gpu_trial, sizeof(int)*FoodNumber);
 	
 	
 	
-	dim3 dimGrid(2);
+	dim3 dimGrid(BlockNum);
 	dim3 dimBlock(512);
 	
 	
