@@ -12,14 +12,14 @@
 
 
 /* Control Parameters of ABC algorithm*/
-#define NP 80             /* The number of colony size (employed bees+onlooker bees)*/
+#define NP 256             /* The number of colony size (employed bees+onlooker bees)*/
 #define FoodNumber NP / 2 /*The number of food sources equals the half of the colony size*/
 #define SwarmFoodNumber FoodNumber / P // The number of food sources per swarm
 #define limit 100         /*A food source which could not be improved through "limit" trials is abandoned by its employed bee*/
-#define maxCycle 3000     /*The number of cycles for foraging {a stopping criteria}*/
+#define maxCycle 10000     /*The number of cycles for foraging {a stopping criteria}*/
 
 /* Problem specific variables*/
-#define D 50     /*The number of parameters of the problem to be optimized*/
+#define D 100     /*The number of parameters of the problem to be optimized*/
 #define lb -5.12 /*lower bound of the parameters. */
 #define ub 5.12  /*upper bound of the parameters. lb and ub can be defined as arrays for the problems of which parameters have different bounds*/
 
@@ -394,7 +394,6 @@ void *ABC(void *data)
 */
 int main() 
 {
-    printf("Running ABC paralelly on CPU using %d processors and Colony size of %d\n", P, NP);
 
     struct timespec start, stop; 
 	double t;
@@ -466,6 +465,16 @@ int main()
         GlobalMins[run] = overallBest;
         mean = mean + overallBest;
     }
+
+    printf("Running ABC paralelly on CPU \n");
+    printf("Optimizing function: %s\n", "Rastrigin");
+    printf("Lower Bound  function: %f\n", lb);
+    printf("Upper Bound: function: %f\n", ub);
+    printf("Processor = %d\n", P);
+    printf("Colony Size: %d\n", NP);
+    printf("Max Cycles: %d\n", maxCycle);
+    printf("Dimension: %d\n", D);
+    printf("Migration Gap: %d\n", MigrationGap);  
 
     mean = mean / runtime;
     printf("Means of %d runs: %e\n", runtime, mean);

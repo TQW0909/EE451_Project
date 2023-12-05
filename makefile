@@ -1,4 +1,4 @@
-CC = gcc -lpthread -lncurses -lm
+CC = gcc -lpthread -lm
 
 all: original cpu
 

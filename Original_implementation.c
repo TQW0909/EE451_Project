@@ -24,17 +24,17 @@ Bahriye Basturk Akay (bahriye@erciyes.edu.tr)
 #include <stdlib.h>
 #include <math.h>
 // #include <conio.h> Only works on windows
-#include <ncurses.h> // Alternative to conio.h for Unix Systems
+// #include <ncurses.h> // Alternative to conio.h for Unix Systems
 #include <time.h>
 
 /* Control Parameters of ABC algorithm*/
-#define NP 80             /* The number of colony size (employed bees+onlooker bees)*/ // Default = 40
+#define NP 256             /* The number of colony size (employed bees+onlooker bees)*/ // Default = 40
 #define FoodNumber NP / 2 /*The number of food sources equals the half of the colony size*/
 #define limit 100         /*A food source which could not be improved through "limit" trials is abandoned by its employed bee*/
-#define maxCycle 3000     /*The number of cycles for foraging {a stopping criteria}*/
+#define maxCycle 10000     /*The number of cycles for foraging {a stopping criteria}*/
 
 /* Problem specific variables*/
-#define D 50     /*The number of parameters of the problem to be optimized*/
+#define D 100     /*The number of parameters of the problem to be optimized*/
 #define lb -5.12 /*lower bound of the parameters. */
 #define ub 5.12  /*upper bound of the parameters. lb and ub can be defined as arrays for the problems of which parameters have different bounds*/
 
@@ -324,6 +324,16 @@ int main()
         GlobalMins[run] = GlobalMin;
         mean = mean + GlobalMin;
     }
+
+    printf("Running ABC Serially \n");
+    printf("Optimizing function: %s\n", "Rastrigin"); // Change
+    printf("Lower Bound  function: %f\n", lb);
+    printf("Upper Bound: function: %f\n", ub);
+    printf("Colony Size: %d\n", NP);
+    printf("Max Cycles: %d\n", maxCycle);
+    printf("Dimension: %d\n", D);
+
+
     mean = mean / runtime;
     printf("Means of %d runs: %e\n", runtime, mean);
 
@@ -338,7 +348,8 @@ int main()
     // print out the execution time here
     printf("Average Time taken to run each iterations: %f sec\n", t);
 
-    getch();
+    // getch();
+    return 0;
 }
 
 double sphere(double sol[D])
